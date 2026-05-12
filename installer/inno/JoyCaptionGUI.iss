@@ -32,7 +32,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "runtime"; Description: "Python 런타임과 ML 패키지를 지금 설치합니다. 첫 설치에는 시간이 오래 걸릴 수 있습니다."; GroupDescription: "런타임 준비"; Flags: unchecked
+Name: "runtime"; Description: "Python 런타임과 ML 패키지를 설치합니다. 실사용에 필요하며 첫 설치에는 시간이 오래 걸릴 수 있습니다."; GroupDescription: "런타임 준비"
 
 [Files]
 Source: "..\..\dist\win-x64-single\JoyCaptionShell.exe"; DestDir: "{app}"; Flags: ignoreversion
