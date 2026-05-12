@@ -1,0 +1,15 @@
+.sandbox-prototype/
+dist/
+reference/
+app/webview-shell/bin/
+app/webview-shell/obj/
+installer/windows/bin/
+installer/windows/obj/
+*.user
+*.suo
+*.pdb
+__pycache__/
+*.pyc
+.prototype-server.pid
+samples/images/*.txt
+samples/images/text_out/

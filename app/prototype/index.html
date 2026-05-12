@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JoyCaption 데스크톱 프로토타입</title>
+    <link rel="icon" href="/static/assets/favicon.ico" sizes="any">
+    <link rel="icon" href="/static/assets/app-icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/static/assets/app-icon-192.png">
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div class="brand-block">
+          <img class="app-mark" src="/static/assets/app-icon.svg" alt="" aria-hidden="true">
+          <div>
+            <span class="eyebrow">이미지 태그 생성기</span>
+            <h1>JoyCaption Desktop</h1>
+            <p>이미지나 폴더를 선택하면 태그, 짧은 캡션, 긴 설명을 생성합니다.</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="healthBtn" type="button" class="ghost-button">다시 진단</button>
+          <button id="loadBtn" type="button" class="ghost-button">모델 확인</button>
+          <button id="demoBtn" type="button" class="ghost-button dev-action">샘플 테스트</button>
+        </div>
+      </header>
+
+      <section class="status-strip" aria-label="실행 상태">
+        <div class="status-item">
+          <span class="status-label">모델</span>
+          <strong id="modelBadge">확인 중</strong>
+        </div>
+        <div class="status-item">
+          <span class="status-label">실행 장치</span>
+          <strong id="backendBadge">확인 중</strong>
+        </div>
+        <div class="status-item wide">
+          <span class="status-label">현재 작업</span>
+          <strong id="workCurrent">대기 중입니다.</strong>
+        </div>
+      </section>
+
+      <section class="notice" hidden>
+        테스트 중인 프로토타입입니다. 실제 모델 모드에서는 모델을 먼저 로드한 뒤 생성 작업을 실행합니다.
+      </section>
+
+      <section class="panel prompt-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="step-label">P</span>
+            <h2>프리셋</h2>
+            <p class="section-note" id="promptSummary">기본 프리셋을 사용합니다.</p>
+          </div>
+          <div class="prompt-mode-control">
+            <button type="button" class="mode-picker-button" id="promptBaseTypeBtn" aria-expanded="false">
+              <span>생성 방식</span>
+              <strong id="promptBaseTypeLabel">태그 목록</strong>
+            </button>
+            <div class="mode-menu" id="promptBaseTypeMenu" hidden></div>
+          </div>
+        </div>
+
+        <div class="prompt-builder" id="promptBuilder">
+          <div class="prompt-inline-control">
+            <input type="checkbox" id="customPromptToggle" hidden>
+            <button type="button" class="toggle-button" id="customPromptToggleBtn" aria-pressed="false">
+              <span>사용자 정의</span>
+              <strong>OFF</strong>
+            </button>
+          </div>
+          <div class="prompt-modal-head custom-only">
+            <div>
+              <h2 id="promptBuilderTitle">프리셋 만들기</h2>
+              <p class="section-note">선택한 항목으로 사용자 정의 프롬프트를 구성합니다.</p>
+            </div>
+            <div class="prompt-modal-actions">
+              <button type="button" class="ghost-button small-button" id="closePromptBuilderBtn">취소</button>
+              <button type="button" class="primary-button small-button" id="applyPromptBuilderBtn">적용</button>
+            </div>
+          </div>
+          <div class="preset-manager custom-only">
+            <label>
+              저장된 프리셋
+              <select id="savedPresetSelect">
+                <option value="">저장된 프리셋 없음</option>
+              </select>
+            </label>
+            <div class="preset-actions">
+              <button type="button" class="ghost-button" id="loadPresetBtn">불러오기</button>
+              <button type="button" class="ghost-button" id="savePresetBtn">저장</button>
+              <button type="button" class="ghost-button danger" id="deletePresetBtn">삭제</button>
+            </div>
+          </div>
+          <div class="form-grid three-column">
+            <label class="custom-only">
+              프리셋 이름
+              <input id="customPresetName" value="내 프리셋" placeholder="예: 쇼핑몰 상품 태그">
+            </label>
+            <select id="promptBaseType" hidden>
+              <option value="tags">태그 목록</option>
+              <option value="short_caption">짧은 캡션</option>
+              <option value="long_description">긴 설명</option>
+              <option value="sd_prompt">Stable Diffusion 프롬프트</option>
+              <option value="midjourney">MidJourney 프롬프트</option>
+              <option value="booru">Booru 태그</option>
+              <option value="product">상품 설명</option>
+              <option value="social">SNS 문구</option>
+              <option value="critic">작품 분석</option>
+              <option value="freeform">자유 프롬프트</option>
+            </select>
+            <label class="custom-only">
+              길이
+              <select id="promptLength">
+                <option value="any">자유</option>
+                <option value="very_short">매우 짧게</option>
+                <option value="short">짧게</option>
+                <option value="medium">보통</option>
+                <option value="long">길게</option>
+                <option value="words_30">30단어 이하</option>
+                <option value="words_60">60단어 이하</option>
+                <option value="words_120">120단어 이하</option>
+              </select>
+            </label>
+            <label class="custom-only">
+              문체
+              <select id="promptTone">
+                <option value="neutral">중립적</option>
+                <option value="concise">간결하게</option>
+                <option value="natural">자연스럽게</option>
+                <option value="dataset">데이터셋용</option>
+                <option value="marketing">마케팅용</option>
+                <option value="technical">기술적으로</option>
+              </select>
+            </label>
+            <label class="custom-only">
+              태그 형식
+              <select id="tagFormat">
+                <option value="comma">쉼표 구분</option>
+                <option value="underscore">lowercase_underscore</option>
+                <option value="plain">일반 단어</option>
+                <option value="weighted">가중치 프롬프트</option>
+              </select>
+            </label>
+            <label class="custom-only">
+              언어
+              <select id="promptLanguage">
+                <option value="english">영어</option>
+                <option value="korean">한국어</option>
+                <option value="same">이미지/입력에 맞춤</option>
+              </select>
+            </label>
+          </div>
+
+          <p class="option-title custom-only">포함할 정보</p>
+          <div class="option-grid custom-only">
+            <label class="check"><input type="checkbox" value="Include information about lighting.">조명 포함</label>
+            <label class="check"><input type="checkbox" value="Include camera angle and shot type.">카메라 각도 포함</label>
+            <label class="check"><input type="checkbox" value="Mention composition and framing.">구도 포함</label>
+            <label class="check"><input type="checkbox" value="Mention visible style, medium, and image quality.">스타일/품질 포함</label>
+            <label class="check"><input type="checkbox" value="Mention subject pose, expression, clothing, and accessories when visible.">인물/의상 포함</label>
+            <label class="check"><input type="checkbox" value="Mention background, setting, objects, and environment.">배경/사물 포함</label>
+            <label class="check"><input type="checkbox" value="Mention color palette and texture.">색감/질감 포함</label>
+            <label class="check"><input type="checkbox" value="Mention whether text, watermark, logo, or signature is visible.">텍스트/워터마크 포함</label>
+            <label class="check"><input type="checkbox" value="Mention orientation and aspect ratio if obvious.">방향/비율 포함</label>
+          </div>
+
+          <p class="option-title custom-only">제외하거나 제한할 정보</p>
+          <div class="option-grid custom-only">
+            <label class="check"><input type="checkbox" value="Do not mention the image resolution.">해상도 언급 안 함</label>
+            <label class="check"><input type="checkbox" value="Do not mention unchangeable personal attributes unless necessary.">민감한 속성 최소화</label>
+            <label class="check"><input type="checkbox" value="Do not invent names, brands, locations, or identities.">추측 금지</label>
+            <label class="check"><input type="checkbox" value="Avoid meta phrases like 'this image shows' or 'you are looking at'.">메타 문구 제거</label>
+            <label class="check"><input type="checkbox" value="Only describe visible elements.">보이는 것만 설명</label>
+            <label class="check"><input type="checkbox" value="Keep the output safe and non-explicit.">안전한 표현 유지</label>
+          </div>
+
+          <label class="custom-only">
+            추가 지시문
+            <textarea id="customPromptText" rows="3" placeholder="예: 쇼핑몰 등록용으로 색상, 소재, 분위기를 꼭 포함해줘."></textarea>
+          </label>
+
+          <label class="custom-only">
+            최종 프롬프트 미리보기
+            <textarea id="promptPreview" rows="5" readonly></textarea>
+          </label>
+        </div>
+      </section>
+
+      <div class="workspace">
+        <section class="main-column">
+          <section class="panel task-panel target-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>작업 대상</h2>
+                <p class="section-note" id="targetSummary">파일을 열면 한 장을 생성하고, 폴더를 열면 배치 작업을 실행합니다.</p>
+              </div>
+            </div>
+
+            <div class="target-actions">
+              <button class="primary-button" id="openFileBtn" type="button">파일 열기</button>
+              <button class="ghost-button" id="openFolderBtn" type="button">폴더 열기</button>
+            </div>
+            <input id="fileInput" type="file" accept="image/*" hidden>
+            <input id="folderInput" type="file" accept="image/*" webkitdirectory multiple hidden>
+
+            <div class="drop-zone" id="dropZone">
+              이미지 파일이나 폴더를 여기에 드래그하세요.
+            </div>
+
+            <label>
+              선택 경로
+              <input id="targetPath" placeholder="파일 또는 폴더를 선택하세요">
+            </label>
+
+            <div class="form-footer">
+              <label class="save-mode-label">
+                저장 방식
+                <select id="sidecarMode">
+                  <option value="beside">원본 이미지 폴더에 개별 .txt 저장</option>
+                  <option value="text_out">원본 이미지 폴더 아래 text_out 폴더에 저장</option>
+                  <option value="combined">폴더명.txt 하나로 저장</option>
+                </select>
+              </label>
+              <div class="save-option-stack" aria-label="저장 옵션">
+                <div class="combined-name-option" id="combinedNameOption" hidden>
+                  <input type="checkbox" id="combinedIncludeFilenames" checked hidden>
+                  <button type="button" class="toggle-button compact" id="combinedIncludeFilenamesBtn" aria-pressed="true">
+                    <span>파일명 포함</span>
+                    <strong>ON</strong>
+                  </button>
+                </div>
+                <div class="folder-recursive-option" id="folderRecursiveOption" hidden>
+                  <input type="checkbox" id="includeSubfolders" hidden>
+                  <button type="button" class="toggle-button compact" id="includeSubfoldersBtn" aria-pressed="false">
+                    <span>하위 폴더 포함</span>
+                    <strong>OFF</strong>
+                  </button>
+                </div>
+              </div>
+              <button type="button" class="primary-button" id="runTargetBtn">생성하기</button>
+            </div>
+          </section>
+
+          <form id="singleForm" class="panel task-panel legacy-form">
+            <div class="panel-heading">
+              <div>
+                <span class="step-label">1</span>
+                <h2>이미지 한 장으로 만들기</h2>
+              </div>
+              <button class="secondary" id="sampleImageBtn" type="button">샘플 입력</button>
+            </div>
+
+            <label>
+              이미지 경로
+              <input name="image_path" placeholder="C:\path\to\image.jpg" required>
+            </label>
+
+            <div class="form-footer">
+              <label class="check">
+                <input type="checkbox" name="write_sidecar" checked>
+                이미지 옆에 .txt 저장
+              </label>
+              <button type="submit" class="primary-button">생성하기</button>
+            </div>
+          </form>
+
+          <form id="batchForm" class="panel task-panel legacy-form">
+            <div class="panel-heading">
+              <div>
+                <span class="step-label">2</span>
+                <h2>폴더 전체 처리하기</h2>
+              </div>
+              <button class="secondary" id="sampleFolderBtn" type="button">샘플 입력</button>
+            </div>
+
+            <label>
+              폴더 경로
+              <input name="input_dir" placeholder="C:\path\to\folder" required>
+            </label>
+
+            <div class="form-footer">
+              <label class="check">
+                <input type="checkbox" name="write_sidecars" checked>
+                이미지 옆에 .txt 저장
+              </label>
+              <button type="submit" class="primary-button">배치 실행</button>
+            </div>
+          </form>
+
+          <div class="activity-grid">
+            <section class="panel result-panel">
+              <div class="panel-heading compact">
+                <div>
+                  <h2>생성 결과</h2>
+                </div>
+              </div>
+              <div class="result-content" id="resultOutput">
+                <div class="empty-state">아직 결과가 없습니다.</div>
+              </div>
+            </section>
+
+            <section class="panel work-panel" id="workPanel" aria-live="polite">
+              <div class="panel-heading compact">
+                <h2>작업 기록</h2>
+                <button class="secondary small-button" id="clearWorkBtn" type="button">지우기</button>
+              </div>
+              <ol class="work-log" id="workLog"></ol>
+            </section>
+          </div>
+        </section>
+
+        <aside class="side-column">
+          <section class="panel load-panel" id="loadPanel">
+            <div class="load-row">
+              <div class="spinner" id="loadSpinner" aria-hidden="true"></div>
+              <div>
+                <h2>모델 로드</h2>
+                <p id="loadMessage">모델이 아직 로드되지 않았습니다.</p>
+              </div>
+            </div>
+            <div class="progress-track">
+              <div class="progress-bar" id="loadProgress"></div>
+            </div>
+            <div class="load-meta" id="loadMeta">대기 중</div>
+          </section>
+
+          <section class="panel preview-panel">
+            <div class="panel-heading compact">
+              <h2>현재 이미지</h2>
+            </div>
+            <div class="image-preview empty" id="imagePreview">
+              <span>이미지를 선택하면 여기에서 미리 봅니다.</span>
+            </div>
+            <div class="progress-track preview-progress-track">
+              <div class="progress-bar" id="previewProgress"></div>
+            </div>
+            <div class="load-meta" id="previewMeta">작업 대기 중</div>
+            <div class="preview-path" id="previewPath">선택된 이미지 없음</div>
+          </section>
+
+          <section class="panel status-panel">
+            <div class="panel-heading compact">
+              <h2>시스템 진단</h2>
+            </div>
+            <div class="diagnostics-list" id="healthOutput">
+              <div class="empty-state">아직 확인하지 않았습니다.</div>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

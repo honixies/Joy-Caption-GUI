@@ -1,0 +1,151 @@
+metadata:
+  version: "1.0"
+  created_at: "2026-05-10"
+  source: "ooo interview fallback"
+  ambiguity_score: 0.18
+  project_type: "brownfield-reference"
+  interview_summary: >
+    Build a general-user desktop app based on D3voz/joy-caption-beta-one-gui-mod
+    for generating image tags, short captions, and long descriptions, with
+    Windows NVIDIA GPU as the primary target and macOS Apple Silicon gated by
+    technical validation.
+
+goal: >
+  Build a beta-quality cross-platform desktop application that uses the
+  JoyCaption model to generate tags, short captions, and long descriptions from
+  images, supporting both single-image preview and folder batch processing, with
+  a sandboxed setup wizard that installs all required runtime components inside
+  the app-managed environment.
+
+constraints:
+  - Use https://github.com/D3voz/joy-caption-beta-one-gui-mod as the primary reference implementation.
+  - Do not require users to install or manage global Python packages manually.
+  - Runtime, Python environment, model files, plugin resources, and cache must live inside an app-managed sandbox.
+  - Windows NVIDIA GPU support is the primary beta target.
+  - macOS Apple Silicon support must be validated before being included in beta scope.
+  - Tauri vs Electron must remain undecided until a packaging/runtime proof of concept is completed.
+  - The app must download required models and dependencies on first setup rather than bundling all model weights in the installer.
+  - User-facing beta must not require terminal commands for normal operation.
+  - No user-installable plugin system in the first beta; only built-in presets and post-processing plugins are required.
+
+context_references:
+  - path: "https://github.com/D3voz/joy-caption-beta-one-gui-mod"
+    role: "primary_reference"
+    summary: "Existing Python GUI for JoyCaption Beta One with Run_GUI.py and Run_gui_4bit.py entry points."
+  - path: "fancyfeast/llama-joycaption-beta-one-hf-llava"
+    role: "model_reference"
+    summary: "JoyCaption model path observed in the reference implementation."
+  - path: "README"
+    role: "requirements_reference"
+    summary: "Reference repo documents high VRAM usage: about 17.4 GB for FP8 and 10 GB for 4-bit."
+
+deliverables:
+  - Desktop app architecture decision record comparing Tauri and Electron after proof of concept.
+  - Sandboxed setup wizard for Windows primary path.
+  - Python ML worker service/process wrapping JoyCaption inference.
+  - UI for single image preview and generation.
+  - UI for folder batch processing with progress, cancel, and retry.
+  - Built-in generation presets for tag, short caption, and long description modes.
+  - Built-in post-processing plugins for cleanup, deduplication, formatting, and save rules.
+  - Output writers for sidecar .txt files and project-level results.csv/results.json.
+  - GPU diagnostics and compatibility report.
+  - Log export flow for troubleshooting.
+  - Settings backup and restore.
+
+acceptance_criteria:
+  - A Windows user with a supported NVIDIA GPU can install the beta app and complete setup without using a terminal.
+  - Setup wizard creates or repairs an isolated app sandbox containing runtime, dependencies, model cache, and plugin resources.
+  - First setup downloads the required model and performs a smoke test on a sample image.
+  - The app can generate tags, short captions, and long descriptions for a single selected image.
+  - The app can process a folder of images and show progress, failures, cancellation, and retry actions.
+  - For each processed image, the app can save a same-basename .txt sidecar file.
+  - For each batch job, the app can save results.csv and results.json with filename, mode, preset, generated text, status, and error metadata.
+  - Built-in post-processing can remove duplicate tags, normalize separators, trim whitespace, and apply user-selected formatting.
+  - GPU diagnostics display detected device, backend, VRAM estimate, selected precision/profile, and actionable failure messages.
+  - Logs can be exported from the UI as a troubleshooting bundle.
+  - Settings can be backed up and restored without corrupting the sandbox.
+  - macOS Apple Silicon is either validated and included with documented limits, or explicitly deferred with a captured technical reason.
+  - The app shell choice is justified by a proof of concept that launches the UI, starts the Python worker, checks sandbox health, and runs one inference path.
+
+ontology_schema:
+  name: "JoyCaptionDesktopBeta"
+  description: "Domain model for a sandboxed desktop image tag and caption generation app."
+  fields:
+    - name: "desktop_shell"
+      type: "object"
+      description: "Tauri or Electron shell candidate, selected after proof of concept."
+    - name: "sandbox"
+      type: "object"
+      description: "App-managed runtime directory containing Python environment, dependencies, models, cache, logs, and plugin resources."
+    - name: "setup_wizard"
+      type: "object"
+      description: "Installer/setup flow that validates GPU, creates sandbox, downloads dependencies, and runs smoke tests."
+    - name: "ml_worker"
+      type: "object"
+      description: "Python worker process or service that loads JoyCaption and performs inference."
+    - name: "model_profile"
+      type: "object"
+      description: "Runtime profile such as FP8 or 4-bit, with device/backend compatibility and VRAM expectations."
+    - name: "image_input"
+      type: "object"
+      description: "Single image or folder input with supported formats and metadata."
+    - name: "generation_mode"
+      type: "string"
+      description: "One of tag, short_caption, or long_description."
+    - name: "generation_preset"
+      type: "object"
+      description: "Built-in prompt/config preset for a target output style."
+    - name: "postprocessor"
+      type: "object"
+      description: "Built-in cleanup/formatting step applied after model generation."
+    - name: "batch_job"
+      type: "object"
+      description: "Folder processing job with queue, progress, cancellation, retry, and result state."
+    - name: "result_record"
+      type: "object"
+      description: "Per-image output containing generated text, settings, status, errors, and paths."
+    - name: "export_bundle"
+      type: "object"
+      description: "Logs and diagnostic state exported for troubleshooting."
+
+evaluation_principles:
+  - name: "Installability"
+    description: "A non-developer can install and complete setup without touching global Python or terminal commands."
+    weight: 0.22
+  - name: "Runtime Isolation"
+    description: "All mutable ML runtime state is contained in an app-managed sandbox with repair/reinstall paths."
+    weight: 0.18
+  - name: "Generation Utility"
+    description: "Tag, short caption, and long description outputs are usable for image review and dataset preparation."
+    weight: 0.18
+  - name: "Batch Reliability"
+    description: "Folder processing handles progress, cancellation, retry, partial failures, and repeatable exports."
+    weight: 0.15
+  - name: "Diagnostics"
+    description: "GPU/runtime/model failures are surfaced with actionable status and exportable logs."
+    weight: 0.15
+  - name: "CrossPlatform Discipline"
+    description: "Windows is completed first while macOS support is gated by evidence rather than assumption."
+    weight: 0.12
+
+exit_conditions:
+  - name: "Beta Scope Complete"
+    description: "The Windows beta path satisfies setup, inference, batch processing, exports, diagnostics, logs, and settings backup/restore."
+    criteria: "All acceptance criteria for Windows primary target pass on a supported NVIDIA GPU test machine."
+  - name: "Shell Decision Made"
+    description: "Tauri or Electron is selected with evidence from a proof of concept."
+    criteria: "ADR documents packaging size, worker communication, update path, sandbox access, and build complexity."
+  - name: "macOS Gate Resolved"
+    description: "Apple Silicon support is either included or explicitly deferred."
+    criteria: "A smoke test confirms viability on Apple Silicon, or a blocking dependency/runtime issue is documented."
+  - name: "Operational Recovery Proven"
+    description: "User can recover from failed setup without manual filesystem surgery."
+    criteria: "Sandbox repair/reinstall flow succeeds after simulated dependency/model failure."
+
+implementation_notes:
+  - Start with a technical spike for the Python worker and sandbox layout before polishing the UI.
+  - Treat the existing Python GUI as behavioral reference, not necessarily as final architecture.
+  - Keep Tauri/Electron undecided until a small proof of concept validates worker startup, local IPC, installer behavior, and sandbox permissions.
+  - Prefer model download into a versioned cache with checksum or manifest validation.
+  - Capture model/runtime profiles separately for Windows NVIDIA FP8/4-bit and macOS Apple Silicon experiments.
+  - The first beta should ship built-in presets and postprocessors only; user-authored plugin loading is out of scope.

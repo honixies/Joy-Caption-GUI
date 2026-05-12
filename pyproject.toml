@@ -1,0 +1,15 @@
+[project]
+name = "joycaption-desktop"
+version = "0.1.0"
+description = "Sandboxed desktop app scaffolding for JoyCaption tag and caption generation."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+joycaption-worker = "joycaption_desktop.worker_cli:main"
+joycaption-prototype = "joycaption_desktop.prototype_server:main"
+joycaption-native = "joycaption_desktop.native_app:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

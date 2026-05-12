@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>JoyCaptionGUI-Setup</AssemblyName>
+    <ApplicationIcon>..\..\app\webview-shell\Assets\JoyCaption.ico</ApplicationIcon>
+  </PropertyGroup>
+</Project>
