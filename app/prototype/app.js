@@ -93,6 +93,8 @@ const promptTone = document.querySelector("#promptTone");
 const tagFormat = document.querySelector("#tagFormat");
 const promptLanguage = document.querySelector("#promptLanguage");
 const customPromptText = document.querySelector("#customPromptText");
+const presetPromptPreview = document.querySelector("#presetPromptPreview");
+const applyPresetPromptBtn = document.querySelector("#applyPresetPromptBtn");
 const promptPreview = document.querySelector("#promptPreview");
 const promptSummary = document.querySelector("#promptSummary");
 const savedPresetSelect = document.querySelector("#savedPresetSelect");
@@ -118,7 +120,11 @@ let previewPollTimer = null;
 let previewState = { path: "", kind: "" };
 let targetKind = "image";
 let promptModalOpen = false;
+let promptPreviewDirty = false;
 let folderImageRequestId = 0;
+let resultProgressItems = [];
+let activeOperation = null;
+let activeAbortController = null;
 const folderImageCache = new Map();
 
 function postprocessorsFor(mode) {
@@ -276,7 +282,7 @@ function presetFormState() {
     language: promptLanguage.value,
     options: selectedPromptOptions(),
     extraText: customPromptText.value.trim(),
-    prompt: buildCustomPrompt(),
+    prompt: finalCustomPrompt(),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -295,7 +301,13 @@ function applyPresetState(preset) {
   for (const input of promptBuilder.querySelectorAll(".option-grid input")) {
     input.checked = selected.has(input.value);
   }
+  promptPreviewDirty = Boolean(preset.prompt);
   updatePromptPreview();
+  if (preset.prompt) {
+    promptPreview.value = preset.prompt;
+  } else {
+    applyPresetPromptPreview();
+  }
 }
 
 function renderSavedPresetList(selectedId = "") {
@@ -375,13 +387,26 @@ function buildCustomPrompt() {
   return parts.join(" ") || "Describe this image.";
 }
 
+function finalCustomPrompt() {
+  return promptPreview.value.trim() || buildCustomPrompt();
+}
+
+function applyPresetPromptPreview() {
+  promptPreview.value = presetPromptPreview.value.trim() || buildCustomPrompt();
+  promptPreviewDirty = true;
+}
+
 function updatePromptPreview() {
   const enabled = customPromptToggle.checked;
   updateToggleButton(customPromptToggleBtn, enabled);
   updatePromptModeButton();
   promptBaseTypeBtn.closest(".prompt-mode-control").hidden = enabled;
   closePromptModeMenu();
-  promptPreview.value = buildCustomPrompt();
+  const generatedPrompt = buildCustomPrompt();
+  presetPromptPreview.value = generatedPrompt;
+  if (!promptPreviewDirty) {
+    promptPreview.value = generatedPrompt;
+  }
   promptPanel.classList.toggle("custom-enabled", enabled);
   promptPanel.classList.toggle("custom-modal-open", enabled && promptModalOpen);
   promptBuilder.classList.toggle("disabled", !enabled);
@@ -394,6 +419,8 @@ function updatePromptPreview() {
   for (const control of [
     customPresetName,
     customPromptText,
+    promptPreview,
+    applyPresetPromptBtn,
     ...promptBuilder.querySelectorAll(".option-grid input"),
   ]) {
     control.disabled = !enabled;
@@ -423,9 +450,8 @@ function generationPayloadOptions() {
   if (!customPromptToggle.checked) {
     return {};
   }
-  const customPrompt = buildCustomPrompt();
   return {
-    custom_prompt: customPrompt,
+    custom_prompt: finalCustomPrompt(),
     custom_preset_name: customPresetName.value.trim() || "사용자 정의",
   };
 }
@@ -452,7 +478,7 @@ function selectedPresetId() {
   return customPromptToggle.checked ? "custom" : presetForMode[selectedMode()];
 }
 
-async function api(path, body) {
+async function api(path, body, requestOptions = {}) {
   const options = body
     ? {
         method: "POST",
@@ -460,6 +486,9 @@ async function api(path, body) {
         body: JSON.stringify(body),
       }
     : undefined;
+  if (requestOptions.signal && options) {
+    options.signal = requestOptions.signal;
+  }
   const response = await fetch(path, options);
   const data = await response.json();
   if (!response.ok) {
@@ -617,6 +646,29 @@ function renderPreviewProgress(current) {
   }
 }
 
+function updateResultProgress(current) {
+  if (!resultProgressItems.length || !current?.total) {
+    return;
+  }
+  const rows = Array.from(resultOutput.querySelectorAll(".result-row"));
+  const total = Number(current.total || rows.length);
+  const index = Number(current.index || 0);
+  const state = current.state || "running";
+
+  rows.forEach((row, rowIndex) => {
+    const position = rowIndex + 1;
+    if (state === "cancelled") {
+      setResultRowStatus(row, position < index ? "succeeded" : "cancelled");
+    } else if (position < index) {
+      setResultRowStatus(row, "succeeded");
+    } else if (position === index && index <= total) {
+      setResultRowStatus(row, state === "succeeded" ? "succeeded" : "running");
+    } else {
+      setResultRowStatus(row, "pending");
+    }
+  });
+}
+
 async function refreshCurrentImage() {
   const current = await api("/api/current-image");
   if (current.path) {
@@ -624,6 +676,7 @@ async function refreshCurrentImage() {
     previewPath.textContent = current.label || current.path;
   }
   renderPreviewProgress(current);
+  updateResultProgress(current);
   return current;
 }
 
@@ -676,6 +729,9 @@ function inferTargetKind(path, fallback = targetKind) {
 }
 
 function statusLabel(status) {
+  if (status === "cancelled") {
+    return "중지됨";
+  }
   if (status === "running") {
     return "작업 중";
   }
@@ -691,6 +747,7 @@ function statusLabel(status) {
 function renderResultRow({ path, name, status = "pending", error = "", outputPath = "" }) {
   const row = document.createElement("div");
   row.className = `result-row ${status}`;
+  row.dataset.path = path || "";
   const file = document.createElement("strong");
   file.className = "result-file";
   file.textContent = name || fileNameFromPath(path);
@@ -707,8 +764,20 @@ function renderResultRow({ path, name, status = "pending", error = "", outputPat
   return row;
 }
 
+function setResultRowStatus(row, status, title = "") {
+  row.className = `result-row ${status}`;
+  const state = row.querySelector(".result-state");
+  if (state) {
+    state.textContent = statusLabel(status);
+  }
+  if (title) {
+    row.title = title;
+  }
+}
+
 function renderPendingResults(items) {
   clearElement(resultOutput);
+  resultProgressItems = items;
   const list = document.createElement("div");
   list.className = "result-list";
   for (const item of items) {
@@ -929,11 +998,47 @@ function failWork(item, error) {
 function setBusy(isBusy) {
   loadBtn.disabled = isBusy;
   demoBtn.disabled = isBusy;
-  runTargetBtn.disabled = isBusy;
   openFileBtn.disabled = isBusy;
   openFolderBtn.disabled = isBusy;
   for (const button of document.querySelectorAll("form button[type='submit']")) {
     button.disabled = isBusy;
+  }
+}
+
+function beginOperation(kind) {
+  const controller = new AbortController();
+  activeOperation = kind;
+  activeAbortController = controller;
+  setBusy(true);
+  runTargetBtn.disabled = false;
+  runTargetBtn.textContent = "중지하기";
+  runTargetBtn.classList.add("danger-action");
+  return controller;
+}
+
+function endOperation(controller) {
+  if (controller && controller !== activeAbortController) {
+    return;
+  }
+  activeOperation = null;
+  activeAbortController = null;
+  setBusy(false);
+  runTargetBtn.textContent = "생성하기";
+  runTargetBtn.classList.remove("danger-action");
+}
+
+async function cancelActiveOperation() {
+  if (!activeOperation) {
+    return;
+  }
+  runTargetBtn.disabled = true;
+  try {
+    await api("/api/cancel-job", {});
+    activeAbortController?.abort();
+    addWork("작업 중지를 요청했습니다.", "error");
+  } catch (error) {
+    addWork(`작업 중지 요청 실패: ${error.message}`, "error");
+    runTargetBtn.disabled = false;
   }
 }
 
@@ -1296,6 +1401,10 @@ targetPath.addEventListener("change", () => {
 });
 
 runTargetBtn.addEventListener("click", () => {
+  if (activeOperation) {
+    cancelActiveOperation();
+    return;
+  }
   if (!targetPath.value) {
     renderResult("파일 또는 폴더를 먼저 선택하세요.");
     return;
@@ -1337,8 +1446,10 @@ batchForm.elements.input_dir.addEventListener("change", () => {
   setImagePreview(batchForm.elements.input_dir.value, "folder");
 });
 
+customPresetName.addEventListener("input", updatePromptPreview);
+customPresetName.addEventListener("change", updatePromptPreview);
+
 for (const control of [
-  customPresetName,
   promptBaseType,
   promptLength,
   promptTone,
@@ -1347,9 +1458,20 @@ for (const control of [
   customPromptText,
   ...promptBuilder.querySelectorAll(".option-grid input"),
 ]) {
-  control.addEventListener("input", updatePromptPreview);
-  control.addEventListener("change", updatePromptPreview);
+  control.addEventListener("input", () => {
+    promptPreviewDirty = false;
+    updatePromptPreview();
+  });
+  control.addEventListener("change", () => {
+    promptPreviewDirty = false;
+    updatePromptPreview();
+  });
 }
+
+promptPreview.addEventListener("input", () => {
+  promptPreviewDirty = true;
+});
+applyPresetPromptBtn.addEventListener("click", applyPresetPromptPreview);
 
 customPromptToggle.addEventListener("change", () => {
   if (customPromptToggle.checked) {
@@ -1423,6 +1545,7 @@ demoBtn.addEventListener("click", async () => {
       postprocessor_ids: postprocessorsFor(singleMode),
       extra_options: generationPayloadOptions(),
       write_sidecar: true,
+      allow_test_output: true,
       sidecar_mode: sidecarMode.value,
       combined_include_filenames: combinedIncludeFilenames.checked,
     });
@@ -1438,6 +1561,7 @@ demoBtn.addEventListener("click", async () => {
       postprocessor_ids: postprocessorsFor(batchMode),
       extra_options: generationPayloadOptions(),
       write_sidecars: true,
+      allow_test_output: true,
       sidecar_mode: sidecarMode.value,
       combined_include_filenames: combinedIncludeFilenames.checked,
       include_subfolders: includeSubfolders.checked,
@@ -1464,7 +1588,8 @@ singleForm.addEventListener("submit", async (event) => {
   const imagePath = form.get("image_path");
   setImagePreview(imagePath, "image");
   renderPendingResults([{ path: imagePath, status: "running" }]);
-  const workItem = addWork("단일 이미지 태그를 생성하는 중입니다.");
+  const controller = beginOperation("single");
+  const workItem = addWork("단일 이미지 생성 중입니다.");
   try {
     const result = await api("/api/generate", {
       image_path: imagePath,
@@ -1475,12 +1600,15 @@ singleForm.addEventListener("submit", async (event) => {
       write_sidecar: form.get("write_sidecar") === "on",
       sidecar_mode: sidecarMode.value,
       combined_include_filenames: combinedIncludeFilenames.checked,
-    });
+    }, { signal: controller.signal });
     renderResult(result);
-    finishWork(workItem, `단일 이미지 태그 생성이 완료되었습니다.${firstSavedPathText([result.sidecar_path])}`);
+    finishWork(workItem, `단일 이미지 생성이 완료되었습니다.${firstSavedPathText([result.sidecar_path])}`);
   } catch (error) {
-    renderResult(`오류: ${error.message}`);
-    failWork(workItem, error);
+    const message = error.name === "AbortError" ? "작업 중지를 요청했습니다." : error.message;
+    renderResult(`오류: ${message}`);
+    failWork(workItem, new Error(message));
+  } finally {
+    endOperation(controller);
   }
 });
 
@@ -1491,7 +1619,8 @@ batchForm.addEventListener("submit", async (event) => {
   const inputDir = form.get("input_dir");
   setImagePreview(inputDir, "folder");
   await renderFolderImages(inputDir, "running");
-  const workItem = addWork("폴더 배치를 실행하는 중입니다.");
+  const controller = beginOperation("batch");
+  const workItem = addWork("폴더 배치 작업 중입니다.");
   try {
     startPreviewPolling();
     const result = await api("/api/batch", {
@@ -1504,14 +1633,22 @@ batchForm.addEventListener("submit", async (event) => {
       sidecar_mode: sidecarMode.value,
       combined_include_filenames: combinedIncludeFilenames.checked,
       include_subfolders: includeSubfolders.checked,
-    });
+    }, { signal: controller.signal });
     await stopPreviewPolling();
     renderResult(result);
-    finishWork(workItem, `폴더 배치가 완료되었습니다.${firstSavedPathText(result.sidecar_paths || [])}`);
+    const wasCancelled = Number(result.cancelled || 0) > 0;
+    finishWork(
+      workItem,
+      wasCancelled ? "배치 작업이 중지되었습니다." : `폴더 배치가 완료되었습니다.${firstSavedPathText(result.sidecar_paths || [])}`,
+      wasCancelled ? "error" : "done",
+    );
   } catch (error) {
     await stopPreviewPolling();
-    renderResult(`오류: ${error.message}`);
-    failWork(workItem, error);
+    const message = error.name === "AbortError" ? "작업 중지를 요청했습니다." : error.message;
+    renderResult(`오류: ${message}`);
+    failWork(workItem, new Error(message));
+  } finally {
+    endOperation(controller);
   }
 });
 

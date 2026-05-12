@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlparse
 from joycaption_desktop.contracts import (
     BatchJob,
     GenerateRequest,
+    GenerateResult,
     GenerationMode,
     JobStatus,
 )
@@ -58,6 +59,7 @@ class PrototypeState:
         self.current_image_lock = threading.Lock()
         self.static_file_cache: dict[Path, tuple[tuple[int, int], bytes, str]] = {}
         self.preview_cache: dict[tuple[str, int, int], tuple[bytes, str]] = {}
+        self.cancel_event = threading.Event()
         self.current_image: dict[str, Any] = {
             "path": None,
             "label": "선택된 이미지 없음",
@@ -157,6 +159,22 @@ class PrototypeState:
         with self.current_image_lock:
             return dict(self.current_image)
 
+    def clear_cancel(self) -> None:
+        self.cancel_event.clear()
+
+    def request_cancel(self) -> dict[str, Any]:
+        self.cancel_event.set()
+        with self.current_image_lock:
+            self.current_image = {
+                **self.current_image,
+                "state": "cancelled",
+                "updated_at": time.time(),
+            }
+        return {"cancelled": True}
+
+    def cancel_requested(self) -> bool:
+        return self.cancel_event.is_set()
+
 
 class PrototypeHandler(BaseHTTPRequestHandler):
     state: PrototypeState
@@ -224,6 +242,9 @@ class PrototypeHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/start-load-model":
                 self._json(self.state.start_model_load())
                 return
+            if parsed.path == "/api/cancel-job":
+                self._json(self.state.request_cancel())
+                return
             if parsed.path == "/api/pick-file":
                 self._json(self._pick_file())
                 return
@@ -258,6 +279,9 @@ class PrototypeHandler(BaseHTTPRequestHandler):
 
     def _generate(self, payload: dict[str, Any]):
         image_path = Path(payload["image_path"]).expanduser()
+        if not self.state.worker.use_real_model and not payload.get("allow_test_output"):
+            raise RuntimeError("테스트 모드에서는 실제 이미지 설명을 생성하거나 저장할 수 없습니다. 실제 모델 런타임을 준비한 뒤 앱으로 실행하세요.")
+        self.state.clear_cancel()
         self.state.set_current_image(image_path, image_path.name, "image", 0, 1, "running")
         request = GenerateRequest(
             image_path=image_path,
@@ -268,6 +292,8 @@ class PrototypeHandler(BaseHTTPRequestHandler):
             extra_options=dict(payload.get("extra_options", {})),
         )
         result = self.state.worker.generate(request)
+        if self.state.cancel_requested():
+            result = self._cancelled_result(request)
         self.state.set_current_image(image_path, image_path.name, "image", 1, 1, result.status.value)
         sidecar = None
         save_warning = None
@@ -283,8 +309,11 @@ class PrototypeHandler(BaseHTTPRequestHandler):
 
     def _batch(self, payload: dict[str, Any]) -> dict[str, Any]:
         input_dir = Path(payload["input_dir"]).expanduser()
+        if not self.state.worker.use_real_model and not payload.get("allow_test_output"):
+            raise RuntimeError("테스트 모드에서는 실제 이미지 설명을 생성하거나 저장할 수 없습니다. 실제 모델 런타임을 준비한 뒤 앱으로 실행하세요.")
         if not input_dir.exists():
             raise FileNotFoundError(f"Input folder not found: {input_dir}")
+        self.state.clear_cancel()
         job_id = f"job-{uuid.uuid4().hex[:10]}"
         job_dir = self.state.sandbox.jobs / job_id
         job = BatchJob(
@@ -301,6 +330,9 @@ class PrototypeHandler(BaseHTTPRequestHandler):
         results = []
         total = len(requests)
         for index, request in enumerate(requests, start=1):
+            if self.state.cancel_requested():
+                results.extend(self._cancelled_result(pending) for pending in requests[index - 1 :])
+                break
             self.state.set_current_image(
                 request.image_path,
                 f"{index}/{total} {request.image_path.name}",
@@ -310,15 +342,20 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                 "running",
             )
             results.append(self.state.worker.generate(request))
+            if self.state.cancel_requested():
+                if index < total:
+                    results.extend(self._cancelled_result(pending) for pending in requests[index:])
+                break
         if requests:
             last_request = requests[-1]
+            final_state = "cancelled" if self.state.cancel_requested() else "succeeded"
             self.state.set_current_image(
                 last_request.image_path,
                 f"{total}/{total} {last_request.image_path.name}",
                 "batch",
                 total,
                 total,
-                "succeeded",
+                final_state,
             )
         sidecars = (
             export_successful_sidecars(
@@ -340,12 +377,25 @@ class PrototypeHandler(BaseHTTPRequestHandler):
             "total": len(results),
             "succeeded": sum(1 for result in results if result.status == JobStatus.SUCCEEDED),
             "failed": sum(1 for result in results if result.status == JobStatus.FAILED),
+            "cancelled": sum(1 for result in results if result.status == JobStatus.CANCELLED),
             "sidecar_paths": sidecars,
             "save_warning": save_warning,
             "csv_path": csv_path,
             "json_path": json_path,
             "results": results,
         }
+
+    def _cancelled_result(self, request: GenerateRequest) -> GenerateResult:
+        return GenerateResult(
+            image_path=request.image_path,
+            mode=request.mode,
+            preset_id=request.preset_id,
+            text="",
+            postprocessed_text="",
+            status=JobStatus.CANCELLED,
+            error="사용자가 작업을 중지했습니다.",
+            metadata={"profile": self.state.worker.profile.id},
+        )
 
     def _save_warning(self, paths: list[Path], intended_dir: Path) -> str | None:
         if not paths:

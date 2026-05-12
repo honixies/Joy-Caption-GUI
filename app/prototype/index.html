@@ -181,9 +181,17 @@
             <textarea id="customPromptText" rows="3" placeholder="예: 쇼핑몰 등록용으로 색상, 소재, 분위기를 꼭 포함해줘."></textarea>
           </label>
 
+          <div class="prompt-preview-group custom-only">
+            <label>
+              프리셋 조합 미리보기
+              <textarea id="presetPromptPreview" rows="4" readonly></textarea>
+            </label>
+            <button type="button" class="ghost-button small-button" id="applyPresetPromptBtn">반영</button>
+          </div>
+
           <label class="custom-only">
-            최종 프롬프트 미리보기
-            <textarea id="promptPreview" rows="5" readonly></textarea>
+            최종 프롬프트
+            <textarea id="promptPreview" rows="5" placeholder="반영 버튼으로 조합 결과를 가져온 뒤 필요하면 직접 수정하세요."></textarea>
           </label>
         </div>
       </section>

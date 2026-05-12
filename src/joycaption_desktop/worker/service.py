@@ -48,7 +48,11 @@ class JoyCaptionWorker:
         self._model_loaded = True
 
     def health(self):
-        return build_worker_health(self.profile, self.model_loaded)
+        return build_worker_health(
+            self.profile,
+            self.model_loaded,
+            use_real_model=self.use_real_model,
+        )
 
     def generate(self, request: GenerateRequest) -> GenerateResult:
         if request.preset_id not in BUILTIN_PRESETS and not request.extra_options.get("custom_prompt"):

@@ -139,6 +139,15 @@ button:disabled {
   background: #164faa;
 }
 
+.primary-button.danger-action {
+  background: #b42318;
+  color: #ffffff;
+}
+
+.primary-button.danger-action:hover {
+  background: #8f1d14;
+}
+
 .ghost-button,
 button.secondary {
   border: 1px solid #c9d3df;
@@ -742,6 +751,23 @@ select:focus {
   align-items: center;
 }
 
+.prompt-preview-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.prompt-preview-group textarea[readonly] {
+  background: #f8fafc;
+  color: #4a5567;
+}
+
+.prompt-preview-group .small-button {
+  min-width: 72px;
+  margin-bottom: 1px;
+}
+
 .ghost-button.danger {
   color: #b42318;
   border-color: #f1b8b2;
@@ -1246,7 +1272,8 @@ pre {
 }
 
 .result-row.failed .result-state,
-.result-row.error .result-state {
+.result-row.error .result-state,
+.result-row.cancelled .result-state {
   background: #ffe2e2;
   color: #ad2525;
 }
@@ -1407,10 +1434,15 @@ pre {
   }
 
   .preset-manager,
+  .prompt-preview-group,
   .form-grid.three-column,
   .meta-grid,
   .batch-summary {
     grid-template-columns: 1fr;
+  }
+
+  .prompt-preview-group .small-button {
+    width: 100%;
   }
 
   .target-panel .form-footer .primary-button {

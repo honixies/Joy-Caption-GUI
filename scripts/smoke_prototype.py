@@ -42,6 +42,7 @@ def main() -> int:
             "preset_id": "tags-dataset",
             "postprocessor_ids": ["normalize-commas", "dedupe-tags"],
             "write_sidecar": True,
+            "allow_test_output": True,
         },
     )
     assert single["result"]["status"] == "succeeded"
@@ -56,6 +57,7 @@ def main() -> int:
             "preset_id": "tags-dataset",
             "postprocessor_ids": ["normalize-commas", "dedupe-tags"],
             "write_sidecars": True,
+            "allow_test_output": True,
         },
     )
     assert batch["total"] >= 2

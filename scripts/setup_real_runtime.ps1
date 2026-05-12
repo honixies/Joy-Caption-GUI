@@ -6,6 +6,8 @@ $Python = Join-Path $VenvDir "Scripts\python.exe"
 $SandboxCache = Join-Path $Root ".sandbox-prototype\cache"
 $PipCache = Join-Path $SandboxCache "pip"
 $HuggingFaceCache = Join-Path $SandboxCache "huggingface"
+$LogDir = Join-Path $Root ".sandbox-prototype\logs"
+$SetupLog = Join-Path $LogDir "runtime-setup.log"
 
 Set-Location $Root
 
@@ -37,6 +39,8 @@ function Find-BasePython {
 
 New-Item -ItemType Directory -Path $PipCache -Force | Out-Null
 New-Item -ItemType Directory -Path $HuggingFaceCache -Force | Out-Null
+New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+Start-Transcript -LiteralPath $SetupLog -Append | Out-Null
 
 if (-not (Test-Path -LiteralPath $Python)) {
   $BasePython = Find-BasePython
@@ -59,16 +63,45 @@ $env:PIP_CACHE_DIR = $PipCache
 $env:HF_HOME = $HuggingFaceCache
 $env:TRANSFORMERS_CACHE = Join-Path $HuggingFaceCache "transformers"
 
-& $Python -m pip --disable-pip-version-check install --upgrade pip
+& $Python -m pip --disable-pip-version-check install --upgrade pip setuptools wheel
 & $Python -m pip --disable-pip-version-check install --force-reinstall `
   --index-url https://download.pytorch.org/whl/cu121 `
   torch==2.5.1+cu121 torchvision==0.20.1+cu121 torchaudio==2.5.1+cu121
 
 & $Python -m pip --disable-pip-version-check install --upgrade `
-  huggingface_hub transformers sentencepiece `
+  huggingface_hub==0.30.1 transformers==4.51.0 tokenizers safetensors sentencepiece `
   peft==0.12.0 accelerate==1.0.0 `
   bitsandbytes pillow
 
 & $Python -m pip --disable-pip-version-check install --upgrade accelerate
 
+$validation = @'
+import importlib.util
+import sys
+
+modules = {
+    "torch": "torch",
+    "torchvision": "torchvision",
+    "torchaudio": "torchaudio",
+    "transformers": "transformers",
+    "accelerate": "accelerate",
+    "peft": "peft",
+    "bitsandbytes": "bitsandbytes",
+    "pillow": "PIL",
+    "huggingface_hub": "huggingface_hub",
+    "tokenizers": "tokenizers",
+    "safetensors": "safetensors",
+    "sentencepiece": "sentencepiece",
+}
+
+missing = [name for name, module in modules.items() if importlib.util.find_spec(module) is None]
+if missing:
+    print("Missing runtime dependencies: " + ", ".join(missing), file=sys.stderr)
+    raise SystemExit(1)
+
+print("Runtime dependency validation passed.")
+'@
+& $Python -c $validation
+
 Write-Host "Real runtime ready: $Python"
+Stop-Transcript | Out-Null

@@ -72,7 +72,25 @@ def detect_gpu() -> GpuDiagnostic:
     )
 
 
-def build_worker_health(profile: ModelProfile, model_loaded: bool) -> WorkerHealth:
+def build_worker_health(
+    profile: ModelProfile,
+    model_loaded: bool,
+    *,
+    use_real_model: bool,
+) -> WorkerHealth:
+    if not use_real_model:
+        return WorkerHealth(
+            ok=True,
+            profile_id=profile.id,
+            model_loaded=model_loaded,
+            backend="test",
+            device_name="테스트 모드",
+            vram_gb=None,
+            dependencies_available={},
+            warnings=(),
+            errors=(),
+        )
+
     gpu = detect_gpu()
     dependencies = dependency_report(profile)
     missing = tuple(name for name, available in dependencies.items() if not available)
